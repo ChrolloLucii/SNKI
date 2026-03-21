@@ -220,7 +220,7 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
 
 ### Что сейчас нужно завести в Issues (полные заготовки по шаблонам)
 
-Ниже — **готовые тексты issue** в формате текущих шаблонов из `.github/ISSUE_TEMPLATE/`.  
+Ниже — **готовые тексты issues** в формате текущих шаблонов из `.github/ISSUE_TEMPLATE/`.  
 Скопируйте блок, создайте issue нужного типа и вставьте содержимое в поля формы.
 
 #### 1) Feature: Каталог слотов с фильтрами
@@ -237,8 +237,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Пользователь может задать диапазон дат
   - [ ] API `/slots` возвращает отфильтрованный список по query-параметрам
   - [ ] Пустой результат корректно отображается в UI
-- Area: `area:web`
-- Priority: `priority:must`
 
 #### 2) Feature: Страница деталей слота
 
@@ -254,8 +252,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Отображается политика/дедлайн отмены в понятном виде
   - [ ] При несуществующем slotId показывается корректная ошибка
   - [ ] API `/slots/{slotId}` отдает все поля, нужные UI
-- Area: `area:web`
-- Priority: `priority:must`
 
 #### 3) Feature: Присоединение к слоту с защитой от овербукинга
 
@@ -271,8 +267,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Параллельные запросы не приводят к овербукингу
   - [ ] Созданное участие связано с пользователем и слотом
   - [ ] Ошибки валидации/авторизации обрабатываются корректно
-- Area: `area:api`
-- Priority: `priority:must`
 
 #### 4) Feature: Имитация оплаты (PAID)
 
@@ -288,8 +282,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Нельзя оплатить, если пользователь не присоединялся к слоту
   - [ ] Возвращаются понятные коды/тексты ошибок
   - [ ] Изменение статуса отражается в `/me/participations`
-- Area: `area:api`
-- Priority: `priority:must`
 
 #### 5) Feature: Страница «Мои участия»
 
@@ -305,8 +297,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Статусы участия отображаются явно (RESERVED/PAID)
   - [ ] При отсутствии данных показывается пустое состояние
   - [ ] Ошибки API отображаются в понятном виде
-- Area: `area:web`
-- Priority: `priority:must`
 
 #### 6) Tech: Admin API + seed демо-данных
 
@@ -322,8 +312,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Можно создать слот через curl из README
   - [ ] Seed-скрипт создает предсказуемый демо-набор слотов
   - [ ] Данные seed пригодны для ручного тестирования ключевых флоу
-- Area: `area:api`
-- Priority: `priority:must`
 
 #### 7) Feature: Базовые уведомления внутри приложения
 
@@ -339,8 +327,6 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] Ошибки API показываются как уведомления об ошибке
   - [ ] Уведомления не блокируют основной сценарий
   - [ ] Тексты уведомлений понятны и единообразны
-- Area: `area:web`
-- Priority: `priority:should`
 
 #### 8) Feature: Admin web-страница создания слотов
 
@@ -356,5 +342,3 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
   - [ ] При успешной отправке слот создается через Admin API
   - [ ] Ошибки авторизации и валидации отображаются в UI
   - [ ] Страница пригодна для ручного наполнения демо-данными
-- Area: `area:web`
-- Priority: `priority:should`
