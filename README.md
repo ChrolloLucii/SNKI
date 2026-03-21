@@ -217,3 +217,26 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
 | `area:api` | Бэкенд |
 | `area:db` | База данных / миграции |
 | `good first issue` | Подходит новичкам |
+
+### Что сейчас нужно завести в Issues (готово к заполнению)
+
+Ниже — список задач, которые стоит сразу создать как issue и поместить в колонку **Ready**.
+
+1. **[Feature] Каталог слотов с фильтрами**  
+   Labels: `type:feature`, `priority:must`, `area:web`, `area:api`
+2. **[Feature] Страница деталей слота (правила, цена, отмена)**  
+   Labels: `type:feature`, `priority:must`, `area:web`, `area:api`
+3. **[Feature] Присоединение к слоту с защитой от овербукинга**  
+   Labels: `type:feature`, `priority:must`, `area:api`
+4. **[Feature] Имитация оплаты (перевод участия в PAID)**  
+   Labels: `type:feature`, `priority:must`, `area:api`
+5. **[Feature] Страница «Мои участия»**  
+   Labels: `type:feature`, `priority:must`, `area:web`, `area:api`
+6. **[Tech] Admin API для создания слотов + seed демо-данных**  
+   Labels: `type:tech`, `priority:must`, `area:api`, `area:db`
+7. **[Feature] Базовые уведомления внутри приложения**  
+   Labels: `type:feature`, `priority:should`, `area:web`, `area:api`
+8. **[Feature] Admin web-страница для создания слотов**  
+   Labels: `type:feature`, `priority:should`, `area:web`
+
+Для каждого issue используйте соответствующий шаблон из `.github/ISSUE_TEMPLATE/`.
