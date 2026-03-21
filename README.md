@@ -85,6 +85,8 @@ docker compose up --build
 | API     | http://localhost:8080 |
 | DB      | postgresql://postgres:postgres@localhost:5432/zal |
 
+---
+
 Остановить: `docker compose down`  
 Сбросить БД: `docker compose down -v`
 
