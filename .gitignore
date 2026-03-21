@@ -1,0 +1,17 @@
+.env
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Go build artifacts
+apps/api/bin/
+apps/api/*.exe
+
+# Vite / web build
+apps/web/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
