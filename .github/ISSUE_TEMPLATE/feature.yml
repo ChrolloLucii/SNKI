@@ -1,0 +1,53 @@
+name: Feature Request
+description: Propose a new feature or user story
+title: "[Feature] "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / User Story
+      description: "As a … I want … so that …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How should this work? Describe the expected behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: "List the conditions that must be true for this to be Done."
+      placeholder: |
+        - [ ] User can …
+        - [ ] API returns …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - area:web
+        - area:api
+        - area:db
+        - area:infra
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - priority:must
+        - priority:should
+    validations:
+      required: true
