@@ -1,25 +1,25 @@
-# API Reference
+# API Справочник
 
-Base URL (local): `http://localhost:8080`
+Базовый URL (локально): `http://localhost:8080`
 
 ---
 
-## Authentication
+## Аутентификация
 
-MVP uses a simple header-based demo auth:
+В MVP используется простая демо-аутентификация через заголовки:
 
-| Header | Used by | Value |
+| Заголовок | Используется в | Значение |
 |--------|---------|-------|
-| `X-User-Token` | User endpoints | Any token that maps to a user row |
-| `X-Admin-Token` | Admin endpoints | Value of `ADMIN_TOKEN` env var |
+| `X-User-Token` | Пользовательские эндпоинты | Любой токен, соответствующий записи пользователя |
+| `X-Admin-Token` | Админские эндпоинты | Значение env-переменной `ADMIN_TOKEN` |
 
 ---
 
-## Endpoints
+## Эндпоинты
 
 ### GET `/health`
 
-Health check. No auth required.
+Проверка работоспособности. Аутентификация не требуется.
 
 **Response `200`**
 ```json
@@ -30,16 +30,16 @@ Health check. No auth required.
 
 ### GET `/slots`
 
-List available game slots.
+Список доступных игровых слотов.
 
-**Query Parameters**
+**Query-параметры**
 
-| Param | Type | Description |
+| Параметр | Тип | Описание |
 |-------|------|-------------|
-| `sport` | string | e.g. `football`, `basketball` |
-| `district` | string | City district |
-| `date_from` | RFC3339 | Start of date range |
-| `date_to` | RFC3339 | End of date range |
+| `sport` | string | например, `football`, `basketball` |
+| `district` | string | Район города |
+| `date_from` | RFC3339 | Начало диапазона дат |
+| `date_to` | RFC3339 | Конец диапазона дат |
 
 **Response `200`**
 ```json
@@ -68,19 +68,19 @@ List available game slots.
 
 ### GET `/slots/{slotId}`
 
-Get slot details.
+Получить детали слота.
 
-**Response `200`** — same shape as list item above.  
-**Response `404`** — slot not found.
+**Response `200`** — та же структура, что и у элемента в списке выше.  
+**Response `404`** — слот не найден.
 
 ---
 
 ### POST `/slots/{slotId}/join`
 
-Reserve a spot. Requires `X-User-Token` header.
+Забронировать место. Требуется заголовок `X-User-Token`.
 
-Concurrency-safe: uses a DB transaction with `SELECT … FOR UPDATE`.  
-Returns `409` if the slot is full or user already joined.
+Безопасно при конкуренции: используется транзакция БД с `SELECT … FOR UPDATE`.  
+Возвращает `409`, если слот заполнен или пользователь уже присоединился.
 
 **Response `201`**
 ```json
@@ -93,20 +93,20 @@ Returns `409` if the slot is full or user already joined.
 }
 ```
 
-**Error responses**
+**Ошибки**
 
-| Status | Reason |
+| Статус | Причина |
 |--------|--------|
-| `401` | Missing `X-User-Token` |
-| `404` | Slot not found |
-| `409` | Slot full or already joined |
+| `401` | Отсутствует `X-User-Token` |
+| `404` | Слот не найден |
+| `409` | Слот заполнен или пользователь уже присоединился |
 
 ---
 
 ### POST `/slots/{slotId}/pay`
 
-Fake payment — sets participant status to `PAID` and creates a payment record.  
-Requires `X-User-Token` header.
+Имитация оплаты — переводит статус участника в `PAID` и создает запись платежа.  
+Требуется заголовок `X-User-Token`.
 
 **Response `200`**
 ```json
@@ -120,19 +120,19 @@ Requires `X-User-Token` header.
 }
 ```
 
-**Error responses**
+**Ошибки**
 
-| Status | Reason |
+| Статус | Причина |
 |--------|--------|
-| `401` | Missing `X-User-Token` |
-| `404` | Participation not found |
-| `409` | Already paid |
+| `401` | Отсутствует `X-User-Token` |
+| `404` | Участие не найдено |
+| `409` | Уже оплачено |
 
 ---
 
 ### GET `/me/participations`
 
-List current user's participations. Requires `X-User-Token` header.
+Список участий текущего пользователя. Требуется заголовок `X-User-Token`.
 
 **Response `200`**
 ```json
@@ -151,9 +151,9 @@ List current user's participations. Requires `X-User-Token` header.
 
 ### POST `/admin/slots`
 
-Create a new slot. Requires `X-Admin-Token` header.
+Создать новый слот. Требуется заголовок `X-Admin-Token`.
 
-**Request Body**
+**Тело запроса**
 ```json
 {
   "sport": "football",
@@ -171,20 +171,20 @@ Create a new slot. Requires `X-Admin-Token` header.
 }
 ```
 
-**Response `201`** — created slot object.
+**Response `201`** — объект созданного слота.
 
-**Error responses**
+**Ошибки**
 
-| Status | Reason |
+| Статус | Причина |
 |--------|--------|
-| `401` | Missing or invalid `X-Admin-Token` |
-| `422` | Validation error |
+| `401` | Отсутствует или некорректен `X-Admin-Token` |
+| `422` | Ошибка валидации |
 
 ---
 
-## Error Shape
+## Формат ошибок
 
-All error responses use the same JSON envelope:
+Все ошибки возвращаются в едином JSON-формате:
 
 ```json
 {
