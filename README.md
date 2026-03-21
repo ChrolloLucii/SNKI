@@ -1,146 +1,117 @@
-# Zal MVP — Team Sports Slots
+# Zal MVP — Слоты для командных видов спорта
 
-> A service for solo players to quickly find and join a team sports game slot in a gym with transparent rules and predictable costs.
-
----
-
-## Table of Contents
-
-1. [Project Overview](#1-project-overview)
-2. [MVP Scope](#2-mvp-scope)
-3. [Architecture](#3-architecture)
-4. [How to Run Locally (Docker Compose)](#4-how-to-run-locally-docker-compose)
-5. [How to Run Migrations](#5-how-to-run-migrations)
-6. [How to Seed Demo Data](#6-how-to-seed-demo-data)
-7. [API Endpoints Summary](#7-api-endpoints-summary)
-8. [Contribution Workflow](#8-contribution-workflow)
-9. [Issue & Board Workflow](#9-issue--board-workflow)
+> Сервис для игроков без команды, который помогает быстро найти и занять место в игре в ближайшем спортзале с прозрачными правилами и предсказуемой стоимостью.
 
 ---
 
-## 1. Project Overview
+## Содержание
 
-**Zal** helps solo sports players find open game slots at local gyms, join them, and pay — all from their phone.
-
-Key problems solved:
-- Hard to find pick-up games at nearby gyms
-- Unclear pricing and cancellation rules
-- No-shows and last-minute cancellations ruin games
-
-Users open the PWA on their phone, pick a sport, district, and time — then browse available slots, read the rules, and reserve a spot with one tap.
-
----
-
-## 2. MVP Scope
-
-### ✅ Must-Have
-- Slot catalog with filters (sport, district, date range)
-- Slot details page ("slot card") with rules, pricing, cancellation policy
-- Join / reserve a spot (concurrency-safe, no overbooking)
-- Fake payment flow (sets participation status to PAID)
-- My Participations page
-- Admin API to create slots + seed data for demo
-
-### 🟡 Nice-to-Have
-- Basic in-app notifications
-- Admin web page for creating slots
-
-### ❌ Out of Scope for MVP
-- Real payment provider (Stripe, etc.)
-- Push notifications
-- Microservices / Kafka / gRPC
-- iOS / Android native apps (PWA only)
+1. [Обзор проекта](#1-обзор-проекта)
+2. [Объем MVP](#2-объем-mvp)
+3. [Архитектура](#3-архитектура)
+4. [Как запустить локально (Docker Compose)](#4-как-запустить-локально-docker-compose)
+5. [Как запускать миграции](#5-как-запускать-миграции)
+6. [Как заполнить демо-данные](#6-как-заполнить-демо-данные)
+7. [Сводка API эндпоинтов](#7-сводка-api-эндпоинтов)
+8. [Процесс внесения изменений](#8-процесс-внесения-изменений)
+9. [Процесс работы с issue и доской](#9-процесс-работы-с-issue-и-доской)
 
 ---
 
-## 3. Architecture
+## 1. Обзор проекта
 
-```
-┌───────────────────────────────────────────────────────┐
-│                     Browser / Phone                   │
-│                                                       │
-│   React PWA (Vite + TS)   http://localhost:5173       │
-│   ┌───────────────────────────────────────────────┐   │
-│   │  /slots (list+filters)                        │   │
-│   │  /slots/:id (slot card)                       │   │
-│   │  /me/participations                           │   │
-│   └───────────────────────────────────────────────┘   │
-└────────────────────┬──────────────────────────────────┘
-                     │ REST/JSON
-┌────────────────────▼──────────────────────────────────┐
-│   Go REST API (chi router)   http://localhost:8080    │
-│                                                       │
-│   /health                                             │
-│   /slots            GET  list + filters               │
-│   /slots/:id        GET  details                      │
-│   /slots/:id/join   POST reserve (concurrency safe)   │
-│   /slots/:id/pay    POST fake payment                 │
-│   /me/participations GET  my bookings                 │
-│   /admin/slots      POST create (admin token)         │
-└────────────────────┬──────────────────────────────────┘
-                     │ SQL
-┌────────────────────▼──────────────────────────────────┐
-│   PostgreSQL 15    postgresql://localhost:5432/zal    │
-│                                                       │
-│   tables: users, slots, participants, payments        │
-└───────────────────────────────────────────────────────┘
-```
+**Zal** помогает игрокам без команды находить свободные игровые слоты в местных залах, присоединяться к ним и оплачивать участие — прямо с телефона.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
+Какие проблемы решает сервис:
+- Сложно найти любительские игры в ближайших залах
+- Непрозрачная стоимость и правила отмены
+- Неявки и отмены в последний момент срывают игры
+
+Пользователь открывает PWA на телефоне, выбирает вид спорта, район и время, затем просматривает доступные слоты, читает правила и бронирует место в один тап.
 
 ---
 
-## 4. How to Run Locally (Docker Compose)
+## 2. Объем MVP
 
-**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker + Docker Compose v2).
+### ✅ Обязательно
+- Каталог слотов с фильтрами (вид спорта, район, диапазон дат)
+- Страница деталей слота («карточка слота») с правилами, ценой и политикой отмены
+- Присоединение/бронирование места (с защитой от гонок и овербукинга)
+- Имитация оплаты (переводит статус участия в `PAID`)
+- Страница «Мои участия»
+- Admin API для создания слотов + наполнение демо-данными
+
+### 🟡 Желательно
+- Базовые уведомления внутри приложения
+- Admin веб-страница для создания слотов
+
+### ❌ Вне рамок MVP
+- Реальный платежный провайдер (Stripe и др.)
+- Push-уведомления
+- Микросервисы / Kafka / gRPC
+- Нативные iOS / Android приложения (только PWA)
+
+---
+
+## 3. Архитектура
+
+Диаграммы переведены в Mermaid и вынесены в [docs/mermaid.md](docs/mermaid.md).
+
+Подробности по архитектуре: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## 4. Как запустить локально (Docker Compose)
+
+**Требования:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (или Docker + Docker Compose v2).
 
 ```bash
-# 1. Clone the repo
+# 1. Клонируйте репозиторий
 git clone https://github.com/<your-org>/zal-mvp.git
 cd zal-mvp
 
-# 2. Copy environment variables
+# 2. Скопируйте переменные окружения
 cp .env.example .env
 
-# 3. Start everything (DB + API + Web)
+# 3. Запустите всё (DB + API + Web)
 docker compose up --build
 ```
 
-Services will be available at:
+Сервисы будут доступны по адресам:
 
-| Service | URL |
+| Сервис | URL |
 |---------|-----|
 | Web PWA | http://localhost:5173 |
 | API     | http://localhost:8080 |
 | DB      | postgresql://postgres:postgres@localhost:5432/zal |
 
-To stop: `docker compose down`  
-To reset DB: `docker compose down -v`
+Остановить: `docker compose down`  
+Сбросить БД: `docker compose down -v`
 
 ---
 
-## 5. How to Run Migrations
+## 5. Как запускать миграции
 
-Migrations run automatically on API startup via `golang-migrate`.
+Миграции запускаются автоматически при старте API через `golang-migrate`.
 
-To run them manually:
+Для ручного запуска:
 
 ```bash
-# Inside the running api container
+# Внутри запущенного контейнера api
 docker compose exec api ./migrate -path /app/migrations -database "$DATABASE_URL" up
 
-# Or with migrate CLI installed locally
+# Или через локально установленный migrate CLI
 migrate -path apps/api/migrations -database "postgresql://postgres:postgres@localhost:5432/zal?sslmode=disable" up
 ```
 
-Migration files live in `apps/api/migrations/`.
+Файлы миграций находятся в `apps/api/migrations/`.
 
 ---
 
-## 6. How to Seed Demo Data
+## 6. Как заполнить демо-данные
 
 ```bash
-# Seed via the admin API (requires ADMIN_TOKEN from .env)
+# Заполнить через admin API (нужен ADMIN_TOKEN из .env)
 curl -X POST http://localhost:8080/admin/slots \
   -H "Content-Type: application/json" \
   -H "X-Admin-Token: secret" \
@@ -160,29 +131,29 @@ curl -X POST http://localhost:8080/admin/slots \
   }'
 ```
 
-A seed script (for CI / local demo) lives at `apps/api/cmd/seed/main.go`.
+Скрипт наполнения (для CI / локального демо) находится в `apps/api/cmd/seed/main.go`.
 
 ---
 
-## 7. API Endpoints Summary
+## 7. Сводка API эндпоинтов
 
-| Method | Path | Auth | Description |
+| Метод | Path | Auth | Описание |
 |--------|------|------|-------------|
-| GET | `/health` | — | Health check |
-| GET | `/slots` | — | List slots (`?sport=&district=&date_from=&date_to=`) |
-| GET | `/slots/{slotId}` | — | Slot details |
-| POST | `/slots/{slotId}/join` | User token | Reserve a spot (409 if full) |
-| POST | `/slots/{slotId}/pay` | User token | Fake payment → PAID |
-| GET | `/me/participations` | User token | My bookings |
-| POST | `/admin/slots` | Admin token | Create a slot |
+| GET | `/health` | — | Проверка доступности |
+| GET | `/slots` | — | Список слотов (`?sport=&district=&date_from=&date_to=`) |
+| GET | `/slots/{slotId}` | — | Детали слота |
+| POST | `/slots/{slotId}/join` | User token | Забронировать место (409 если мест нет) |
+| POST | `/slots/{slotId}/pay` | User token | Имитация оплаты → PAID |
+| GET | `/me/participations` | User token | Мои бронирования |
+| POST | `/admin/slots` | Admin token | Создать слот |
 
-Full OpenAPI spec: [docs/API.md](docs/API.md)
+Полная спецификация API: [docs/API.md](docs/API.md)
 
 ---
 
-## 8. Contribution Workflow
+## 8. Процесс внесения изменений
 
-We use **trunk-based development** with short-lived feature branches.
+Мы используем **trunk-based development** с короткоживущими ветками.
 
 ```
 main  ←── feature/<ticket>-short-desc  (PR + review)
@@ -190,57 +161,57 @@ main  ←── feature/<ticket>-short-desc  (PR + review)
       ←── tech/<ticket>-short-desc
 ```
 
-### Step-by-step
+### Шаги
 
-1. Pick an issue from the **Ready** column on the project board.
-2. Create a branch: `git checkout -b feature/42-slot-filters`
-3. Make your changes, commit often with clear messages:  
+1. Возьмите issue из колонки **Ready** на project board.
+2. Создайте ветку: `git checkout -b feature/42-slot-filters`
+3. Внесите изменения, коммитьте чаще с понятными сообщениями:  
    `git commit -m "feat(slots): add district filter"`
-4. Push and open a Pull Request using the [PR template](.github/pull_request_template.md).
-5. Request a review from at least one teammate.
-6. Merge to `main` once approved (squash merge preferred).
+4. Запушьте ветку и откройте Pull Request по [шаблону PR](.github/pull_request_template.md).
+5. Запросите ревью минимум у одного участника команды.
+6. После одобрения объедините в `main` (предпочтительно squash merge).
 
-### Commit Message Convention
+### Соглашение по commit messages
 
 ```
 <type>(<scope>): <short description>
 
-Types: feat, fix, refactor, test, docs, chore
-Scopes: slots, participation, payments, admin, web, db, infra
+Типы: feat, fix, refactor, test, docs, chore
+Области: slots, participation, payments, admin, web, db, infra
 ```
 
 ---
 
-## 9. Issue & Board Workflow
+## 9. Процесс работы с issue и доской
 
-We use GitHub Issues + a GitHub Project board with these columns:
+Используем GitHub Issues + GitHub Project board с такими колонками:
 
-| Column | Meaning |
+| Колонка | Значение |
 |--------|---------|
-| **Backlog** | Ideas and future tasks — not yet prioritized |
-| **Ready** | Clearly scoped, ready to pick up |
-| **In Progress** | Someone is actively working on it |
-| **In Review** | PR is open, waiting for review |
-| **Done** | Merged to main |
+| **Backlog** | Идеи и будущие задачи — без приоритизации |
+| **Ready** | Задачи с понятным объемом, готовые к работе |
+| **In Progress** | Кто-то активно выполняет задачу |
+| **In Review** | PR открыт и ожидает ревью |
+| **Done** | Изменения влиты в main |
 
-### For non-technical teammates
+### Для нетехнических участников команды
 
-- **To report a bug:** open an issue → choose _Bug Report_ template.
-- **To request a feature:** open an issue → choose _Feature Request_ template.
-- **To track a tech task:** use _Tech Task_ template.
-- Assign labels (see below) and move the card to the right column.
+- **Сообщить о баге:** создайте issue → выберите шаблон _Bug Report_.
+- **Запросить фичу:** создайте issue → выберите шаблон _Feature Request_.
+- **Отследить техническую задачу:** используйте шаблон _Tech Task_.
+- Назначьте labels (см. ниже) и переместите карточку в нужную колонку.
 
 ### Labels
 
-| Label | Meaning |
+| Label | Значение |
 |-------|---------|
-| `type:feature` | New feature or user story |
-| `type:bug` | Something broken |
-| `type:tech` | Refactor, infra, tooling |
-| `type:docs` | Documentation |
-| `priority:must` | Blocker for MVP |
-| `priority:should` | Important, but not blocking |
-| `area:web` | Frontend |
-| `area:api` | Backend |
-| `area:db` | Database / migrations |
-| `good first issue` | Good for newcomers |
+| `type:feature` | Новая фича или пользовательская история |
+| `type:bug` | Что-то сломано |
+| `type:tech` | Рефакторинг, инфраструктура, инструменты |
+| `type:docs` | Документация |
+| `priority:must` | Блокер для MVP |
+| `priority:should` | Важно, но не блокирует |
+| `area:web` | Фронтенд |
+| `area:api` | Бэкенд |
+| `area:db` | База данных / миграции |
+| `good first issue` | Подходит новичкам |
