@@ -56,12 +56,14 @@ docker compose down
 - `GET /health` - Health check (PostgreSQL + Redis)
 - `GET /slots` - Список слотов с фильтрами
 - `GET /slots/{id}` - Информация о слоте
-- `POST /slots/{id}/join` - Присоединиться к слоту (требует `X-User-Token`)
-- `POST /slots/{id}/pay` - Оплатить участие (требует `X-User-Token`, `X-Idempotency-Key`)
-- `GET /me/participations` - Мои участия (требует `X-User-Token`)
 
-### Admin
-- `POST /admin/slots` - Создать новый слот (требует `X-Admin-Token`)
+### Требуют X-Demo-Token
+- `POST /slots/{id}/join` - Присоединиться к слоту
+- `POST /slots/{id}/pay` - Оплатить участие
+- `GET /me/participations` - Мои участия
+
+### Требуют X-Admin-Token
+- `POST /admin/slots` - Создать новый слот
 
 ## Миграции
 
