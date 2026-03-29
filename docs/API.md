@@ -1,193 +1,273 @@
-# API Справочник
+# API контракт для фронтенда (MVP)
 
-Базовый URL (локально): `http://localhost:8080`
+Этот документ нужен, чтобы фронтенд уже мог работать по понятному контракту, даже пока часть бэкенда еще не дописана.
 
----
+Важно: сейчас в коде реально поднят только GET /health. Остальные ручки в этом документе являются целевым контрактом, который нужно реализовать в бэкенде.
 
-## Аутентификация
+## Базовые правила
 
-В MVP используется простая демо-аутентификация через заголовки:
+- Базовый URL локально: http://localhost:8080
+- Формат обмена: JSON
+- Время и даты: ISO-8601 в UTC
+- Идентификаторы: UUID
+- Деньги: целое число в рублях (например, 500 = 500 рублей)
 
-| Заголовок | Используется в | Значение |
-|--------|---------|-------|
-| `X-User-Token` | Пользовательские эндпоинты | Любой токен, соответствующий записи пользователя |
-| `X-Admin-Token` | Админские эндпоинты | Значение env-переменной `ADMIN_TOKEN` |
+## Заголовки
 
----
+- Для публичных ручек токен не нужен.
+- Для пользовательских ручек нужен заголовок X-Demo-Token.
+- Для админских ручек нужен заголовок X-Admin-Token.
+- Для оплаты нужен заголовок X-Idempotency-Key (уникальный ключ запроса оплаты, чтобы случайно не оплатить дважды).
+
+## Что фронту делать по шагам
+
+1. На экране списка игр дергать GET /slots.
+2. При открытии карточки игры дергать GET /slots/{slotId}.
+3. При нажатии "Участвовать" дергать POST /slots/{slotId}/join.
+4. При нажатии "Оплатить" дергать POST /slots/{slotId}/pay.
+5. В личном кабинете дергать GET /me/participations.
+
+## Единый формат ошибок
+
+Если что-то пошло не так, API должен возвращать:
+
+- status: HTTP-статус ошибки
+- code: короткий машинный код ошибки
+- message: понятный текст для человека
+
+Примеры code:
+
+- UNAUTHORIZED
+- SLOT_NOT_FOUND
+- SLOT_FULL
+- ALREADY_JOINED
+- ALREADY_PAID
+- VALIDATION_ERROR
+- INTERNAL_ERROR
+
+## Модель данных: слот
+
+Поля, которые фронт должен получать в слоте:
+
+- id
+- sport
+- district
+- venue_name
+- address
+- starts_at
+- deadline_at
+- duration_minutes
+- capacity
+- min_players
+- expected_price
+- max_price
+- rules_text
+- status (OPEN, CANCELLED, COMPLETED)
+- created_at
+- updated_at
+
+Дополнительно для удобства UI желательно отдавать:
+
+- current_participants
+- free_spots
+
+## Модель данных: участие
+
+- id
+- slot_id
+- user_id
+- status (RESERVED, PAID)
+- reserved_at
+- paid_at
+
+## Модель данных: платеж
+
+- id
+- participant_id
+- idempotency_key
+- amount
+- currency
+- provider
+- status (PENDING, PAID, FAILED, REFUNDED)
+- provider_payment_id
+- provider_metadata
+- created_at
+- updated_at
 
 ## Эндпоинты
 
-### GET `/health`
+### 1) GET /health
 
-Проверка работоспособности. Аутентификация не требуется.
+Для чего: проверить, что API жив и может ходить в базу.
 
-**Response `200`**
-```json
-{ "status": "ok" }
-```
+Успех:
 
----
+- 200 OK
+- Поля ответа: status, version
 
-### GET `/slots`
+### 2) GET /slots
 
-Список доступных игровых слотов.
+Для чего: список доступных слотов для каталога.
 
-**Query-параметры**
+Query-параметры (все опциональные):
 
-| Параметр | Тип | Описание |
-|-------|------|-------------|
-| `sport` | string | например, `football`, `basketball` |
-| `district` | string | Район города |
-| `date_from` | RFC3339 | Начало диапазона дат |
-| `date_to` | RFC3339 | Конец диапазона дат |
+- sport
+- district
+- date_from
+- date_to
 
-**Response `200`**
-```json
-[
-  {
-    "id": "uuid",
-    "sport": "football",
-    "district": "Центральный",
-    "venue_name": "Стадион Динамо",
-    "address": "ул. Ленина 1",
-    "starts_at": "2026-04-01T18:00:00Z",
-    "duration_minutes": 60,
-    "capacity": 10,
-    "min_players": 6,
-    "deadline_at": "2026-04-01T16:00:00Z",
-    "expected_price": 500,
-    "max_price": 700,
-    "rules_text": "Casual game, no tackles.",
-    "status": "OPEN",
-    "spots_left": 4
-  }
-]
-```
+Логика:
 
----
+- По умолчанию возвращать только status = OPEN.
+- Сортировка по starts_at по возрастанию (ближайшие сверху).
 
-### GET `/slots/{slotId}`
+Успех:
 
-Получить детали слота.
+- 200 OK
+- Ответ: массив слотов
 
-**Response `200`** — та же структура, что и у элемента в списке выше.  
-**Response `404`** — слот не найден.
+Ошибки:
 
----
+- 422 VALIDATION_ERROR, если сломан формат даты
 
-### POST `/slots/{slotId}/join`
+### 3) GET /slots/{slotId}
 
-Забронировать место. Требуется заголовок `X-User-Token`.
+Для чего: детальная страница конкретного слота.
 
-Безопасно при конкуренции: используется транзакция БД с `SELECT … FOR UPDATE`.  
-Возвращает `409`, если слот заполнен или пользователь уже присоединился.
+Path-параметры:
 
-**Response `201`**
-```json
-{
-  "participant_id": "uuid",
-  "slot_id": "uuid",
-  "user_id": "uuid",
-  "status": "RESERVED",
-  "reserved_at": "2026-03-21T10:00:00Z"
-}
-```
+- slotId (UUID)
 
-**Ошибки**
+Успех:
 
-| Статус | Причина |
-|--------|--------|
-| `401` | Отсутствует `X-User-Token` |
-| `404` | Слот не найден |
-| `409` | Слот заполнен или пользователь уже присоединился |
+- 200 OK
+- Ответ: объект слота
+- Желательно добавить current_participants и free_spots
 
----
+Ошибки:
 
-### POST `/slots/{slotId}/pay`
+- 404 SLOT_NOT_FOUND
 
-Имитация оплаты — переводит статус участника в `PAID` и создает запись платежа.  
-Требуется заголовок `X-User-Token`.
+### 4) POST /slots/{slotId}/join
 
-**Response `200`**
-```json
-{
-  "payment_id": "uuid",
-  "participant_id": "uuid",
-  "status": "PAID",
-  "amount": 500,
-  "currency": "RUB",
-  "provider": "FAKE"
-}
-```
+Для чего: пользователь бронирует место в слоте.
 
-**Ошибки**
+Требует:
 
-| Статус | Причина |
-|--------|--------|
-| `401` | Отсутствует `X-User-Token` |
-| `404` | Участие не найдено |
-| `409` | Уже оплачено |
+- Заголовок X-Demo-Token
 
----
+Path-параметры:
 
-### GET `/me/participations`
+- slotId (UUID)
 
-Список участий текущего пользователя. Требуется заголовок `X-User-Token`.
+Успех:
 
-**Response `200`**
-```json
-[
-  {
-    "participant_id": "uuid",
-    "slot": { /* same shape as GET /slots/{id} */ },
-    "status": "PAID",
-    "reserved_at": "2026-03-21T10:00:00Z",
-    "paid_at": "2026-03-21T10:05:00Z"
-  }
-]
-```
+- 201 Created
+- Ответ: объект участия со статусом RESERVED
 
----
+Ошибки:
 
-### POST `/admin/slots`
+- 401 UNAUTHORIZED
+- 404 SLOT_NOT_FOUND
+- 409 SLOT_FULL
+- 409 ALREADY_JOINED
+- 409 DEADLINE_PASSED
 
-Создать новый слот. Требуется заголовок `X-Admin-Token`.
+### 5) POST /slots/{slotId}/pay
 
-**Тело запроса**
-```json
-{
-  "sport": "football",
-  "district": "Центральный",
-  "venue_name": "Стадион Динамо",
-  "address": "ул. Ленина 1",
-  "starts_at": "2026-04-01T18:00:00Z",
-  "duration_minutes": 60,
-  "capacity": 10,
-  "min_players": 6,
-  "deadline_at": "2026-04-01T16:00:00Z",
-  "expected_price": 500,
-  "max_price": 700,
-  "rules_text": "Casual game, no tackles."
-}
-```
+Для чего: пользователь оплачивает участие.
 
-**Response `201`** — объект созданного слота.
+Требует:
 
-**Ошибки**
+- Заголовок X-Demo-Token
+- Заголовок X-Idempotency-Key
 
-| Статус | Причина |
-|--------|--------|
-| `401` | Отсутствует или некорректен `X-Admin-Token` |
-| `422` | Ошибка валидации |
+Path-параметры:
 
----
+- slotId (UUID)
 
-## Формат ошибок
+Успех:
 
-Все ошибки возвращаются в едином JSON-формате:
+- 200 OK
+- Ответ: объект платежа со статусом PAID
+- Плюс обновленное участие со статусом PAID
 
-```json
-{
-  "error": "human readable message"
-}
-```
+Ошибки:
+
+- 401 UNAUTHORIZED
+- 404 PARTICIPATION_NOT_FOUND
+- 409 ALREADY_PAID
+- 409 PAYMENT_IN_PROGRESS
+
+### 6) GET /me/participations
+
+Для чего: экран "Мои участия".
+
+Требует:
+
+- Заголовок X-Demo-Token
+
+Успех:
+
+- 200 OK
+- Ответ: массив участий пользователя
+- Каждый элемент должен содержать данные участия плюс краткие данные слота:
+- slot_id, sport, district, venue_name, address, starts_at, deadline_at, duration_minutes, expected_price, max_price, slot_status
+
+### 7) POST /admin/slots
+
+Для чего: создать новый слот из админки.
+
+Требует:
+
+- Заголовок X-Admin-Token
+
+Body (обязательные поля):
+
+- sport
+- district
+- venue_name
+- address
+- starts_at
+- deadline_at
+- duration_minutes
+- capacity
+- min_players
+- expected_price
+- max_price
+
+Body (опционально):
+
+- rules_text
+- status (по умолчанию OPEN)
+
+Успех:
+
+- 201 Created
+- Ответ: созданный объект слота
+
+Ошибки:
+
+- 401 UNAUTHORIZED
+- 422 VALIDATION_ERROR
+
+## Что уже есть в базе и можно использовать для демо
+
+- В seed-данных 5 слотов в статусе OPEN.
+- Есть 3 демо-пользователя.
+- Есть примеры участия в статусах RESERVED и PAID.
+- Есть пример платежа PAID.
+
+Это позволяет фронтенду сразу собирать экраны списка, деталей и личного кабинета на реальных данных.
+
+## Что нужно реализовать в бэкенде по этому контракту
+
+1. Включить маршруты /slots, /slots/{slotId}, /slots/{slotId}/join, /slots/{slotId}/pay, /me/participations, /admin/slots.
+2. Добавить middleware аутентификации по X-Demo-Token и X-Admin-Token.
+3. Зафиксировать единый JSON-формат ошибок.
+4. Для join сделать защиту от овербукинга в транзакции.
+5. Для pay сделать идемпотентность через X-Idempotency-Key.
+
+Когда это будет реализовано, фронтенд сможет без переделок перейти с моков на живой API.
+
+
