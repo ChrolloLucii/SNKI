@@ -12,6 +12,10 @@ services:
   database:
     image: postgres:18.3-alpine3.23
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - db
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -50,7 +54,7 @@ services:
       redis:   
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/zal?sslmode=disable}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@database:5432/zal?sslmode=disable}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       PORT: ${PORT:-8080}
       ENV: ${ENV:-development}
@@ -59,17 +63,17 @@ services:
     ports:
       - "8080:8080"
 
-  web:
-    build:
-      context: ./apps/web
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
-    ports:
-      - "5173:5173"
-    depends_on:
-      - api
+#  web:
+#    build:
+#      context: ./apps/web
+#      dockerfile: Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+#    ports:
+#      - "5173:5173"
+#    depends_on:
+#      - api
 
 volumes:
   pg_data:

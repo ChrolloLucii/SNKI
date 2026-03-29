@@ -1,15 +1,19 @@
 #STAGE 1
 FROM golang:1.26.1-alpine3.23 AS builder
 
-RUN apk add --no-cache git make
+ARG SQLC_VERSION=v1.30.0
 
 WORKDIR /build
 
 COPY go.mod go.sum ./
 
-RUN go.mod download
+RUN go mod download
+
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@${SQLC_VERSION}
 
 COPY . .
+
+RUN /go/bin/sqlc generate -f sqlc.yaml
 
 #собираем статический бинарник из исходных файлов 
 
@@ -34,7 +38,7 @@ WORKDIR /app
 
 COPY --from=builder /build/api /app/api
 
-COPY --from-builder /build/internal/database/migrations /app/internal/database/migrations
+COPY --from=builder /build/internal/database/migrations /app/internal/database/migrations
 
 RUN chmod +x /app/api
 

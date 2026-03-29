@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -48,11 +49,11 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
-	config.MaxConns = 25         // Максимум открытых соединений
-	config.MinConns = 5          // Минимум idle соединений
-	config.MaxConnLifetime = 0   // Соединения живут бесконечно
-	config.MaxConnIdleTime = 0   // Idle соединения не закрываются
-	config.HealthCheckPeriod = 0 // Отключаем automatic health check
+	config.MaxConns = 25                        // Максимум открытых соединений
+	config.MinConns = 5                         // Минимум idle соединений
+	config.MaxConnLifetime = 0                  // Соединения живут бесконечно
+	config.MaxConnIdleTime = 0                  // Idle соединения не закрываются
+	config.HealthCheckPeriod = 30 * time.Second // Периодический health check (должен быть > 0)
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
