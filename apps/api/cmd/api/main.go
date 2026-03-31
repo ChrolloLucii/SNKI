@@ -11,11 +11,12 @@ import (
 	"time"
 
 	"github.com/ChrolloLucii/SNKI/apps/api/internal/database"
+	"github.com/ChrolloLucii/SNKI/apps/api/internal/handlers"
+	"github.com/ChrolloLucii/SNKI/apps/api/internal/locking"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	// "github.com/ChrolloLucii/SNKI/apps/api/internal/locking"
-	// "github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -29,11 +30,10 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is required")
 	}
 
-	// Redis временно отключен.
-	// redisURL := os.Getenv("REDIS_URL")
-	// if redisURL == "" {
-	// 	log.Fatal("REDIS_URL environment variable is required")
-	// }
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		log.Fatal("REDIS_URL environment variable is required")
+	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -63,25 +63,24 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 3. REDIS SETUP (временно отключено)
-	// log.Println(" Connecting to Redis...")
-	// opts, err := redis.ParseURL(redisURL)
-	// if err != nil {
-	// 	log.Fatalf(" Failed to parse Redis URL: %v", err)
-	// }
+	// 3. REDIS SETUP
+	log.Println(" Connecting to Redis...")
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Fatalf(" Failed to parse Redis URL: %v", err)
+	}
 
-	// redisClient := redis.NewClient(opts)
-	// defer redisClient.Close()
+	redisClient := redis.NewClient(opts)
+	defer redisClient.Close()
 
-	// // Проверка соединения с Redis
-	// if err := redisClient.Ping(ctx).Err(); err != nil {
-	// 	log.Fatalf(" Failed to ping Redis: %v", err)
-	// }
-	// log.Println(" Redis connection established")
+	// Проверка соединения с Redis
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Fatalf(" Failed to ping Redis: %v", err)
+	}
+	log.Println(" Redis connection established")
 
-	// // Создание locker для distributed locking
-	// locker := locking.NewRedisLocker(redisClient)
-	// _ = locker // TODO: Использовать в handlers
+	// Создание locker для distributed locking
+	locker := locking.NewRedisLocker(redisClient)
 
 	// 4. HTTP SERVER SETUP
 	r := chi.NewRouter()
@@ -113,20 +112,21 @@ func main() {
 			return
 		}
 
-		// Проверка Redis (временно отключена)
+		// Проверка Redis
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			http.Error(w, `{"status":"unhealthy","reason":"redis"}`, http.StatusServiceUnavailable)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"status":"ok","version":"0.1.0"}`)
 	})
 
-	// TODO: API endpoints
-	// r.Get("/slots", handlers.ListSlots(pool))
-	// r.Get("/slots/{slotId}", handlers.GetSlot(pool))
-	// r.Post("/slots/{slotId}/join", handlers.JoinSlot(pool, locker))
-	// r.Post("/slots/{slotId}/pay", handlers.PaySlot(pool, locker))
-	// r.Get("/me/participations", handlers.GetMyParticipations(pool))
-	// r.Post("/admin/slots", handlers.CreateSlot(pool))
+	// API endpoints
+	r.Get("/slots", handlers.ListAll(pool))
+	r.Get("/slots/{slotId}", handlers.GetSlotInf(pool))
+	r.Post("/slots/{slotId}/join", handlers.Join(pool, locker))
 
 	// 404 handler
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
