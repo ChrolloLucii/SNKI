@@ -209,3 +209,132 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(SuccessResp{Success: true, Data: slots})
 	}
 }
+
+type PayRequest struct {
+	UserID uuid.UUID `json:"user_id"`
+	Amount int       `json:"amount"`
+}
+
+// Pay handles POST /slots/{id}/pay
+func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		slotIDStr := chi.URLParam(r, "slotId")
+		slotID, _ := uuid.Parse(slotIDStr)
+
+		idempotencyKey := r.Header.Get("X-Idempotency-Key")
+		if idempotencyKey == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "missing_idempotency_key", Code: "INVALID_INPUT"})
+			return
+		}
+
+		req := PayRequest{}
+		json.NewDecoder(r.Body).Decode(&req)
+
+		if req.UserID == uuid.Nil || req.Amount <= 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_input", Code: "INVALID_INPUT"})
+			return
+		}
+
+		// существует ли уже ключ идемпотентности
+		var prevStatus string
+		err := pool.QueryRow(ctx, `
+			SELECT status FROM payments WHERE idempotency_key = $1
+		`, idempotencyKey).Scan(&prevStatus)
+		
+		if err == nil {
+			// Idempotency hit
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(SuccessResp{
+				Success: true, 
+				Message: fmt.Sprintf("Payment already processed (idempotent req)"),
+			})
+			return
+		}
+
+		// Получиние распределенной блокировки для оплаты
+		lockKey := fmt.Sprintf("payment:participant:%s:%s", req.UserID, slotID)
+		lock, err := locker.TryAcquire(ctx, lockKey, 10*time.Second)
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "payment_in_progress", Code: "PAYMENT_LOCKED"})
+			return
+		}
+		defer lock.Release(ctx)
+
+		//  Проверка статуса участника и защита от двойной оплаты в рамках транзакции
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// Получаем participant_id и текущий статус участника для данного слота и пользователя
+		var participantID string
+		var status string
+		
+		err = tx.QueryRow(ctx, `
+			SELECT id, status FROM participants 
+			WHERE slot_id = $1 AND user_id = $2
+		`, slotID, req.UserID).Scan(&participantID, &status)
+
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "participant_not_found", Code: "NOT_FOUND"})
+			return
+		}
+
+		// Если статус уже PAID, то возвращаем 409 Conflict (двойная оплата)
+		if status == "PAID" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "already_paid", Code: "ALREADY_PAID", Message: "Participant has already paid for this slot"})
+			return
+		}
+
+		if status != "RESERVED" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_status", Code: "INVALID_STATUS"})
+			return
+		}
+
+		// INSERT платежа (или вернуть ошибку, если idempotency_key уже существует)
+		_, err = tx.Exec(ctx, `
+			INSERT INTO payments (participant_id, idempotency_key, amount, status)
+			VALUES ($1, $2, $3, 'PAID')
+		`, participantID, idempotencyKey, req.Amount)
+
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict) // 409 Conflict для двойной оплаты
+			json.NewEncoder(w).Encode(ErrorResp{Error: "payment_failed", Code: "DOUBLE_PAYMENT_DB", Message: err.Error()})
+			return
+		}
+
+		// Обновляем статус участника на PAID
+		_, err = tx.Exec(ctx, `
+			UPDATE participants SET status = 'PAID' WHERE id = $1
+		`, participantID)
+
+		if err != nil {
+			http.Error(w, "failed to update participant", 500)
+			return
+		}
+
+		tx.Commit(ctx)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(SuccessResp{Success: true, Message: "Payment successful"})
+	}
+}

@@ -127,6 +127,7 @@ func main() {
 	r.Get("/slots", handlers.ListAll(pool))
 	r.Get("/slots/{slotId}", handlers.GetSlotInf(pool))
 	r.Post("/slots/{slotId}/join", handlers.Join(pool, locker))
+	r.Post("/slots/{slotId}/pay", handlers.Pay(pool, locker))
 
 	// 404 handler
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
