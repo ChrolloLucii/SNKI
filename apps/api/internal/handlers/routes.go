@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"encoding/json"
@@ -13,6 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type ErrorResp struct {
+	Error   string `json:"error"`
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
+}
+
+type SuccessResp struct {
+	Success bool        `json:"success"`
+	Data    interface{} `json:"data,omitempty"`
+	Message string      `json:"message,omitempty"`
+}
 
 type JoinRequest struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -30,7 +41,8 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		req := JoinRequest{UserID: uuid.MustParse(userIDStr)}
 		if req.UserID == uuid.Nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "missing_user_id", "INVALID_INPUT", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "missing_user_id", Code: "INVALID_INPUT"})
 			return
 		}
 
@@ -38,12 +50,13 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		lock, err := locker.TryAcquire(ctx, lockKey, 5*time.Second)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusConflict, "slot_busy", "SLOT_BUSY", "")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "slot_busy", Code: "SLOT_BUSY"})
 			return
 		}
 		defer lock.Release(ctx)
 
-		// Check slot exists
+		//  проверяем, что слот существует, открыт для регистрации и не заполнен, чтобы избежать гонок и обеспечить целостность данных (чтобы всегда был актуальный статус слота при попытке записаться)
 		var status string
 		var capacity int32
 		var deadline time.Time
@@ -52,23 +65,26 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		`, slotID).Scan(&status, &capacity, &deadline)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusNotFound, "slot_not_found", "NOT_FOUND", "")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "slot_not_found", Code: "NOT_FOUND"})
 			return
 		}
 
 		if status != "OPEN" {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "slot_not_open", "INVALID_SLOT_STATUS", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "slot_not_open", Code: "INVALID_SLOT_STATUS"})
 			return
 		}
 
 		if time.Now().After(deadline) {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "deadline_passed", "REGISTRATION_CLOSED", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "deadline_passed", Code: "REGISTRATION_CLOSED"})
 			return
 		}
 
-		// Check not already joined
+		// проверяем, что пользователь еще не записан в этот слот, чтобы избежать дублей и обеспечить idempotent join (чтобы при повторных запросах с тем же userID не создавались новые участники, а просто возвращалась ошибка о том, что пользователь уже записан)
 		var count int
 		pool.QueryRow(ctx, `
 			SELECT COUNT(*) FROM participants WHERE slot_id = $1 AND user_id = $2
@@ -76,7 +92,8 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if count > 0 {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusConflict, "already_joined", "DUPLICATE_PARTICIPATION", "")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "already_joined", Code: "DUPLICATE_PARTICIPATION"})
 			return
 		}
 
@@ -89,15 +106,16 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if int32(count) >= capacity {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusConflict, "slot_full", "OVERBOOKING", fmt.Sprintf("Slot is full (%d/%d)", count, capacity))
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "slot_full", Code: "OVERBOOKING", Message: fmt.Sprintf("Slot is full (%d/%d)", count, capacity)})
 			return
 		}
 
-		// INSERT in transaction (create user if needed, then add participant)
+		// INSERT в participants и создание пользователя, если его нет, нужно делать в рамках одной транзакции, чтобы избежать гонок и обеспечить целостность данных (чтобы всегда был пользователь для участника)
 		tx, _ := pool.Begin(ctx)
 		defer tx.Rollback(ctx)
 
-		// Create user if not exists (demo users don't have tokens)
+		// создаем пользователя, если его нет, чтобы обеспечить целостность данных (чтобы всегда был пользователь для участника)
 		tx.Exec(ctx, `
 			INSERT INTO users (id, token) 
 			VALUES ($1, $2) 
@@ -112,14 +130,15 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		tx.Commit(ctx)
 
-		log.Printf("✓ User %s joined slot (now %d/%d)", req.UserID, count+1, capacity)
+		log.Printf("вњ“ User %s joined slot (now %d/%d)", req.UserID, count+1, capacity)
 
 		w.Header().Set("Content-Type", "application/json")
-		WriteJSON(w, http.StatusCreated, SuccessResp{Success: true, Message: fmt.Sprintf("Joined slot (%d/%d participants)", count+1, capacity)})
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(SuccessResp{Success: true, Message: fmt.Sprintf("Joined slot (%d/%d participants)", count+1, capacity)})
 	}
 }
 
-// GetSlotInf handles GET /slots/{id}
+//  GET /slots/{id} - получить базовую информацию о слоте (спорт, район, название площадки, количество участников и т.д.)
 func GetSlotInf(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slotIDStr := chi.URLParam(r, "slotId")
@@ -143,13 +162,14 @@ func GetSlotInf(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusNotFound, "not_found", "NOT_FOUND", "")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "not_found", Code: "NOT_FOUND"})
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		WriteJSON(w, http.StatusOK, SuccessResp{
+		json.NewEncoder(w).Encode(SuccessResp{
 			Success: true, 
 			Data: map[string]interface{}{
 				"id": id, 
@@ -169,7 +189,8 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 		`)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusInternalServerError, "error", "INTERNAL_ERROR", "")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "error", Code: "INTERNAL_ERROR"})
 			return
 		}
 		defer rows.Close()
@@ -183,7 +204,8 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		WriteJSON(w, http.StatusOK, SuccessResp{Success: true, Data: slots})
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(SuccessResp{Success: true, Data: slots})
 	}
 }
 
@@ -203,7 +225,8 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		idempotencyKey := r.Header.Get("X-Idempotency-Key")
 		if idempotencyKey == "" {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "missing_idempotency_key", "INVALID_INPUT", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "missing_idempotency_key", Code: "INVALID_INPUT"})
 			return
 		}
 
@@ -214,45 +237,46 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if req.UserID == uuid.Nil || req.Amount <= 0 {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "invalid_input", "INVALID_INPUT", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_input", Code: "INVALID_INPUT"})
 			return
 		}
 
-		// существует ли уже ключ идемпотентности
+		// Проверяем, не был ли уже обработан запрос с таким idempotency key
 		var prevStatus string
 		err := pool.QueryRow(ctx, `
 			SELECT status FROM payments WHERE idempotency_key = $1
 		`, idempotencyKey).Scan(&prevStatus)
 		
 		if err == nil {
-			// Idempotency hit
+			// Если запись найдена, значит запрос уже обрабатывался
 			w.Header().Set("Content-Type", "application/json")
-			WriteJSON(w, http.StatusOK, SuccessResp{
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(SuccessResp{
 				Success: true, 
 				Message: fmt.Sprintf("Payment already processed (idempotent req)"),
 			})
 			return
 		}
 
-		// Получиние распределенной блокировки для оплаты
+		// здесь можно было бы еще дополнительно проверять, что ошибка именно "no rows", а не какая-то другая, но для простоты примера опустим это
 		lockKey := fmt.Sprintf("payment:participant:%s:%s", req.UserID, slotID)
 		lock, err := locker.TryAcquire(ctx, lockKey, 10*time.Second)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusConflict, "payment_in_progress", "PAYMENT_LOCKED", "")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "payment_in_progress", Code: "PAYMENT_LOCKED"})
 			return
 		}
 		defer lock.Release(ctx)
 
-		//  Проверка статуса участника и защита от двойной оплаты в рамках транзакции
 		tx, err := pool.Begin(ctx)
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "internal_error", "INTERNAL_ERROR", "internal server error")
+			http.Error(w, "internal server error", 500)
 			return
 		}
 		defer tx.Rollback(ctx)
-
-		// Получаем participant_id и текущий статус участника для данного слота и пользователя
+		// Проверяем, что участник существует и в правильном статусе для оплаты
 		var participantID string
 		var status string
 		
@@ -263,24 +287,27 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusNotFound, "participant_not_found", "NOT_FOUND", "")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "participant_not_found", Code: "NOT_FOUND"})
 			return
 		}
 
-		// Если статус уже PAID, то возвращаем 409 Conflict (двойная оплата)
+		//  409 конфликт, если уже оплачено (можно было бы и 400, но так понятнее)
 		if status == "PAID" {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusConflict, "already_paid", "ALREADY_PAID", "Participant has already paid for this slot")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "already_paid", Code: "ALREADY_PAID", Message: "Participant has already paid for this slot"})
 			return
 		}
 
 		if status != "RESERVED" {
 			w.Header().Set("Content-Type", "application/json")
-			WriteError(w, http.StatusBadRequest, "invalid_status", "INVALID_STATUS", "")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_status", Code: "INVALID_STATUS"})
 			return
 		}
 
-		// INSERT платежа (или вернуть ошибку, если idempotency_key уже существует)
+		// INSERT 
 		_, err = tx.Exec(ctx, `
 			INSERT INTO payments (participant_id, idempotency_key, amount, status)
 			VALUES ($1, $2, $3, 'PAID')
@@ -288,25 +315,25 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict) // 409 Conflict для двойной оплаты
-			WriteJSON(w, http.StatusOK, ErrorResp{Error: "payment_failed", Code: "DOUBLE_PAYMENT_DB", Message: err.Error()})
+			w.WriteHeader(http.StatusConflict) 
+			json.NewEncoder(w).Encode(ErrorResp{Error: "payment_failed", Code: "DOUBLE_PAYMENT_DB", Message: err.Error()})
 			return
 		}
 
-		// Обновляем статус участника на PAID
 		_, err = tx.Exec(ctx, `
 			UPDATE participants SET status = 'PAID' WHERE id = $1
 		`, participantID)
 
 		if err != nil {
-			WriteError(w, http.StatusInternalServerError, "internal_error", "INTERNAL_ERROR", "failed to update participant")
+			http.Error(w, "failed to update participant", 500)
 			return
 		}
 
 		tx.Commit(ctx)
 
 		w.Header().Set("Content-Type", "application/json")
-		WriteJSON(w, http.StatusOK, SuccessResp{Success: true, Message: "Payment successful"})
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(SuccessResp{Success: true, Message: "Payment successful"})
 	}
 }
 
