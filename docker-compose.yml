@@ -1,0 +1,80 @@
+version: "5.1.1"
+
+# ---------------------------------------------------------------------------
+# Local dev: docker compose up --build
+# Web   → http://localhost:5173
+# API   → http://localhost:8080
+# DB    → postgresql://postgres:postgres@localhost:5432/zal?sslmode=disable
+# Redis → redis://localhost:6379/0
+# ---------------------------------------------------------------------------
+
+services:
+  database:
+    image: postgres:18.3-alpine3.23
+    restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-zal}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:8.6.1-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:   
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@database:5432/zal?sslmode=disable}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      PORT: ${PORT:-8080}
+      ENV: ${ENV:-development}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-secret}
+      DEMO_USER_TOKEN: ${DEMO_USER_TOKEN:-changeme_user_token}
+    ports:
+      - "8080:8080"
+
+#  web:
+#    build:
+#      context: ./apps/web
+#      dockerfile: Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080}
+#    ports:
+#      - "5173:5173"
+#    depends_on:
+#      - api
+
+volumes:
+  pg_data:
+  redis_data:

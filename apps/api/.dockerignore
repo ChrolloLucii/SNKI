@@ -1,0 +1,48 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+api
+*.test
+*.out
+
+# Dependencies (будут скачаны внутри контейнера)
+vendor/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Generated code (будет сгенерирован внутри контейнера если нужно)
+internal/database/sqlc/
+
+# Test coverage
+coverage.out
+*.cover
