@@ -49,30 +49,26 @@ func CreateSlot(pool *pgxpool.Pool) http.HandlerFunc {
 		token := r.Header.Get("X-Admin-Token")
 		if token == "" {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "unauthorized", Code: "UNAUTHORIZED", Message: "Missing X-Admin-Token header"})
+			WriteError(w, http.StatusUnauthorized, "unauthorized", "UNAUTHORIZED", "Missing X-Admin-Token header")
 			return
 		}
 
 		var req AdminCreateSlotRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_input", Code: "VALIDATION_ERROR", Message: "Invalid JSON format"})
+			WriteError(w, http.StatusUnprocessableEntity, "invalid_input", "VALIDATION_ERROR", "Invalid JSON format")
 			return
 		}
 
 		if req.Sport == "" || req.District == "" || req.VenueName == "" || req.Address == "" {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "missing_fields", Code: "VALIDATION_ERROR", Message: "Missing required text fields"})
+			WriteError(w, http.StatusUnprocessableEntity, "missing_fields", "VALIDATION_ERROR", "Missing required text fields")
 			return
 		}
 
 		if req.DurationMinutes <= 0 || req.Capacity <= 0 || req.MinPlayers <= 0 {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "invalid_numbers", Code: "VALIDATION_ERROR", Message: "Numbers must be positive"})
+			WriteError(w, http.StatusUnprocessableEntity, "invalid_numbers", "VALIDATION_ERROR", "Numbers must be positive")
 			return
 		}
 
@@ -101,13 +97,12 @@ func CreateSlot(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "db_error", Code: "INTERNAL_ERROR", Message: err.Error()})
+			WriteError(w, http.StatusInternalServerError, "db_error", "INTERNAL_ERROR", err.Error())
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(s)
+		WriteJSON(w, http.StatusOK, s)
 	}
 }

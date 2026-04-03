@@ -1,7 +1,6 @@
 ﻿package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -49,8 +48,7 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 		rows, err := pool.Query(r.Context(), query, userID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "db_error", Code: "INTERNAL_ERROR", Message: err.Error()})
+			WriteError(w, http.StatusInternalServerError, "db_error", "INTERNAL_ERROR", err.Error())
 			return
 		}
 		defer rows.Close()
@@ -64,8 +62,7 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 				&i.StartsAt, &i.DeadlineAt, &i.DurationMinutes, &i.ExpectedPrice, &i.MaxPrice, &i.SlotStatus,
 			); err != nil {
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(ErrorResp{Error: "db_error", Code: "INTERNAL_ERROR", Message: err.Error()})
+				WriteError(w, http.StatusInternalServerError, "db_error", "INTERNAL_ERROR", err.Error())
 				return
 			}
 			results = append(results, i)
@@ -77,7 +74,7 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(results)
+		WriteJSON(w, http.StatusOK, results)
 	}
 }
 

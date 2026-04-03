@@ -10,7 +10,7 @@ type contextKey string
 
 const userIDKey contextKey = "userId"
 
-// AuthUserMiddleware verifies the X-Demo-Token header and puts the userID in context.
+// AuthUserMiddleware - это промежуточное ПО, которое извлекает userID из заголовков запроса и сохраняет его в контексте для дальнейшего использования в обработчиках. В реальной системе здесь будет полноценная аутентификация, например, через JWT или сессию.
 func AuthUserMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("X-Demo-Token")
@@ -25,8 +25,7 @@ func AuthUserMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
-// AuthAdminMiddleware verifies the X-Admin-Token header for admin actions.
+// AuthAdminMiddleware проверяет наличие X-Admin-Token в заголовках и возвращает 401, если его нет. В реальной реализации здесь могла бы быть более сложная логика проверки токена.
 func AuthAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("X-Admin-Token")
@@ -43,7 +42,7 @@ func AuthAdminMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// GetUserID extracts the user ID from the request context.
+// GetUserID возвращает userID из контекста, установленного в AuthUserMiddleware. Если userID нет, возвращает пустую строку.
 func GetUserID(ctx context.Context) string {
 	val, ok := ctx.Value(userIDKey).(string)
 	if !ok {
