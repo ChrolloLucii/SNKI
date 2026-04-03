@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"encoding/json"
@@ -33,19 +33,7 @@ type ParticipationSlotItem struct {
 func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Temporary authentication via headers directly, before middleware is used everywhere
-		token := r.Header.Get("X-Demo-Token")
-		if token == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "unauthorized", Code: "UNAUTHORIZED", Message: "Missing X-Demo-Token header"})
-			return
-		}
-
-		ctx := r.Context()
-		
-		// For demo MVP, assume the token might literally be the user UUID.
-		// If not a valid UUID format, fail.
-		userID := token
+		userID := GetUserID(r.Context())
 
 		query := `
 			SELECT 
@@ -58,7 +46,7 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 			ORDER BY s.starts_at DESC
 		`
 
-		rows, err := pool.Query(ctx, query, userID)
+		rows, err := pool.Query(r.Context(), query, userID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -92,3 +80,5 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 		json.NewEncoder(w).Encode(results)
 	}
 }
+
+

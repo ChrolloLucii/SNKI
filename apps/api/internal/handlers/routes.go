@@ -1,4 +1,4 @@
-package handlers
+﻿package handlers
 
 import (
 	"encoding/json"
@@ -37,9 +37,8 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		slotIDStr := chi.URLParam(r, "slotId")
 		slotID, _ := uuid.Parse(slotIDStr)
 
-		req := JoinRequest{}
-		json.NewDecoder(r.Body).Decode(&req)
-
+		userIDStr := GetUserID(ctx)
+		req := JoinRequest{UserID: uuid.MustParse(userIDStr)}
 		if req.UserID == uuid.Nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
@@ -131,7 +130,7 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		tx.Commit(ctx)
 
-		log.Printf("✓ User %s joined slot (now %d/%d)", req.UserID, count+1, capacity)
+		log.Printf("вњ“ User %s joined slot (now %d/%d)", req.UserID, count+1, capacity)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -231,8 +230,10 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 
+		userIDStr := GetUserID(ctx)
 		req := PayRequest{}
 		json.NewDecoder(r.Body).Decode(&req)
+		req.UserID = uuid.MustParse(userIDStr)
 
 		if req.UserID == uuid.Nil || req.Amount <= 0 {
 			w.Header().Set("Content-Type", "application/json")
@@ -241,7 +242,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 
-		// существует ли уже ключ идемпотентности
+		// СЃСѓС‰РµСЃС‚РІСѓРµС‚ Р»Рё СѓР¶Рµ РєР»СЋС‡ РёРґРµРјРїРѕС‚РµРЅС‚РЅРѕСЃС‚Рё
 		var prevStatus string
 		err := pool.QueryRow(ctx, `
 			SELECT status FROM payments WHERE idempotency_key = $1
@@ -258,7 +259,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 
-		// Получиние распределенной блокировки для оплаты
+		// РџРѕР»СѓС‡РёРЅРёРµ СЂР°СЃРїСЂРµРґРµР»РµРЅРЅРѕР№ Р±Р»РѕРєРёСЂРѕРІРєРё РґР»СЏ РѕРїР»Р°С‚С‹
 		lockKey := fmt.Sprintf("payment:participant:%s:%s", req.UserID, slotID)
 		lock, err := locker.TryAcquire(ctx, lockKey, 10*time.Second)
 		if err != nil {
@@ -269,7 +270,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		}
 		defer lock.Release(ctx)
 
-		//  Проверка статуса участника и защита от двойной оплаты в рамках транзакции
+		//  РџСЂРѕРІРµСЂРєР° СЃС‚Р°С‚СѓСЃР° СѓС‡Р°СЃС‚РЅРёРєР° Рё Р·Р°С‰РёС‚Р° РѕС‚ РґРІРѕР№РЅРѕР№ РѕРїР»Р°С‚С‹ РІ СЂР°РјРєР°С… С‚СЂР°РЅР·Р°РєС†РёРё
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			http.Error(w, "internal server error", 500)
@@ -277,7 +278,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		}
 		defer tx.Rollback(ctx)
 
-		// Получаем participant_id и текущий статус участника для данного слота и пользователя
+		// РџРѕР»СѓС‡Р°РµРј participant_id Рё С‚РµРєСѓС‰РёР№ СЃС‚Р°С‚СѓСЃ СѓС‡Р°СЃС‚РЅРёРєР° РґР»СЏ РґР°РЅРЅРѕРіРѕ СЃР»РѕС‚Р° Рё РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
 		var participantID string
 		var status string
 		
@@ -293,7 +294,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 
-		// Если статус уже PAID, то возвращаем 409 Conflict (двойная оплата)
+		// Р•СЃР»Рё СЃС‚Р°С‚СѓСЃ СѓР¶Рµ PAID, С‚Рѕ РІРѕР·РІСЂР°С‰Р°РµРј 409 Conflict (РґРІРѕР№РЅР°СЏ РѕРїР»Р°С‚Р°)
 		if status == "PAID" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -308,7 +309,7 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 
-		// INSERT платежа (или вернуть ошибку, если idempotency_key уже существует)
+		// INSERT РїР»Р°С‚РµР¶Р° (РёР»Рё РІРµСЂРЅСѓС‚СЊ РѕС€РёР±РєСѓ, РµСЃР»Рё idempotency_key СѓР¶Рµ СЃСѓС‰РµСЃС‚РІСѓРµС‚)
 		_, err = tx.Exec(ctx, `
 			INSERT INTO payments (participant_id, idempotency_key, amount, status)
 			VALUES ($1, $2, $3, 'PAID')
@@ -316,12 +317,12 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict) // 409 Conflict для двойной оплаты
+			w.WriteHeader(http.StatusConflict) // 409 Conflict РґР»СЏ РґРІРѕР№РЅРѕР№ РѕРїР»Р°С‚С‹
 			json.NewEncoder(w).Encode(ErrorResp{Error: "payment_failed", Code: "DOUBLE_PAYMENT_DB", Message: err.Error()})
 			return
 		}
 
-		// Обновляем статус участника на PAID
+		// РћР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚СѓСЃ СѓС‡Р°СЃС‚РЅРёРєР° РЅР° PAID
 		_, err = tx.Exec(ctx, `
 			UPDATE participants SET status = 'PAID' WHERE id = $1
 		`, participantID)
@@ -338,3 +339,5 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		json.NewEncoder(w).Encode(SuccessResp{Success: true, Message: "Payment successful"})
 	}
 }
+
+

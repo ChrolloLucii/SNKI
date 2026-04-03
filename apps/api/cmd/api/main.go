@@ -126,10 +126,16 @@ func main() {
 	// API endpoints
 	r.Get("/slots", handlers.ListAll(pool))
 	r.Get("/slots/{slotId}", handlers.GetSlotInf(pool))
-	r.Post("/slots/{slotId}/join", handlers.Join(pool, locker))
-	r.Post("/slots/{slotId}/pay", handlers.Pay(pool, locker))
-	r.Get("/me/participations", handlers.GetMyParticipations(pool))
-	r.Post("/admin/slots", handlers.CreateSlot(pool))
+	r.Group(func(r chi.Router) {
+		r.Use(handlers.AuthUserMiddleware)
+		r.Post("/slots/{slotId}/join", handlers.Join(pool, locker))
+		r.Post("/slots/{slotId}/pay", handlers.Pay(pool, locker))
+		r.Get("/me/participations", handlers.GetMyParticipations(pool))
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(handlers.AuthAdminMiddleware)
+		r.Post("/admin/slots", handlers.CreateSlot(pool))
+	})
 
 	// 404 handler
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -173,4 +179,5 @@ func main() {
 
 	log.Println(" Server stopped")
 }
+
 
