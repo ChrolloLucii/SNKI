@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -94,7 +94,7 @@ func main() {
 
 	// CORS РґР»СЏ frontend
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Demo-Token", "X-Admin-Token", "X-Idempotency-Key"},
 		ExposedHeaders:   []string{"Link"},
@@ -179,5 +179,6 @@ func main() {
 
 	log.Println(" Server stopped")
 }
+
 
 
