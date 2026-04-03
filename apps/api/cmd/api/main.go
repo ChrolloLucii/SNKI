@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -49,13 +49,13 @@ func main() {
 
 	ctx := context.Background()
 
-	// Запуск миграций (КРИТИЧНО: перед созданием connection pool)
+	// Р—Р°РїСѓСЃРє РјРёРіСЂР°С†РёР№ (РљР РРўРР§РќРћ: РїРµСЂРµРґ СЃРѕР·РґР°РЅРёРµРј connection pool)
 	log.Println(" Running database migrations...")
 	if err := database.RunMigrations(databaseURL); err != nil {
 		log.Fatalf(" Failed to run migrations: %v", err)
 	}
 
-	// Создание connection pool
+	// РЎРѕР·РґР°РЅРёРµ connection pool
 	log.Println(" Connecting to PostgreSQL...")
 	pool, err := database.NewPool(ctx, databaseURL)
 	if err != nil {
@@ -73,46 +73,46 @@ func main() {
 	redisClient := redis.NewClient(opts)
 	defer redisClient.Close()
 
-	// Проверка соединения с Redis
+	// РџСЂРѕРІРµСЂРєР° СЃРѕРµРґРёРЅРµРЅРёСЏ СЃ Redis
 	if err := redisClient.Ping(ctx).Err(); err != nil {
 		log.Fatalf(" Failed to ping Redis: %v", err)
 	}
 	log.Println(" Redis connection established")
 
-	// Создание locker для distributed locking
+	// РЎРѕР·РґР°РЅРёРµ locker РґР»СЏ distributed locking
 	locker := locking.NewRedisLocker(redisClient)
 
 	// 4. HTTP SERVER SETUP
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.RequestID)                 // Уникальный ID для каждого запроса
-	r.Use(middleware.RealIP)                    // Получение реального IP клиента
-	r.Use(middleware.Logger)                    // Логирование всех запросов
-	r.Use(middleware.Recoverer)                 // Восстановление после panic
-	r.Use(middleware.Timeout(60 * time.Second)) // Таймаут 60 сек
+	r.Use(middleware.RequestID)                 // РЈРЅРёРєР°Р»СЊРЅС‹Р№ ID РґР»СЏ РєР°Р¶РґРѕРіРѕ Р·Р°РїСЂРѕСЃР°
+	r.Use(middleware.RealIP)                    // РџРѕР»СѓС‡РµРЅРёРµ СЂРµР°Р»СЊРЅРѕРіРѕ IP РєР»РёРµРЅС‚Р°
+	r.Use(middleware.Logger)                    // Р›РѕРіРёСЂРѕРІР°РЅРёРµ РІСЃРµС… Р·Р°РїСЂРѕСЃРѕРІ
+	r.Use(middleware.Recoverer)                 // Р’РѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ РїРѕСЃР»Рµ panic
+	r.Use(middleware.Timeout(60 * time.Second)) // РўР°Р№РјР°СѓС‚ 60 СЃРµРє
 
-	// CORS для frontend
+	// CORS РґР»СЏ frontend
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Demo-Token", "X-Admin-Token", "X-Idempotency-Key"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
-		MaxAge:           300, // 5 минут
+		MaxAge:           300, // 5 РјРёРЅСѓС‚
 	}))
 
 	// 5. ROUTES
 
-	// Health check (для мониторинга и k8s liveness probe)
+	// Health check (РґР»СЏ РјРѕРЅРёС‚РѕСЂРёРЅРіР° Рё k8s liveness probe)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		// Проверка PostgreSQL
+		// РџСЂРѕРІРµСЂРєР° PostgreSQL
 		if err := pool.Ping(ctx); err != nil {
 			http.Error(w, `{"status":"unhealthy","reason":"database"}`, http.StatusServiceUnavailable)
 			return
 		}
 
-		// Проверка Redis
+		// РџСЂРѕРІРµСЂРєР° Redis
 		if err := redisClient.Ping(ctx).Err(); err != nil {
 			http.Error(w, `{"status":"unhealthy","reason":"redis"}`, http.StatusServiceUnavailable)
 			return
@@ -128,6 +128,8 @@ func main() {
 	r.Get("/slots/{slotId}", handlers.GetSlotInf(pool))
 	r.Post("/slots/{slotId}/join", handlers.Join(pool, locker))
 	r.Post("/slots/{slotId}/pay", handlers.Pay(pool, locker))
+	r.Get("/me/participations", handlers.GetMyParticipations(pool))
+	r.Post("/admin/slots", handlers.CreateSlot(pool))
 
 	// 404 handler
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -161,9 +163,9 @@ func main() {
 		}
 	}()
 
-	log.Printf("✓ Server starting on port %s (env=%s)", port, env)
+	log.Printf("вњ“ Server starting on port %s (env=%s)", port, env)
 	log.Printf("  Health: http://localhost:%s/health", port)
-	log.Println("─────────────────────────────────────────────────")
+	log.Println("в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ")
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf(" Server failed: %v", err)
@@ -171,3 +173,4 @@ func main() {
 
 	log.Println(" Server stopped")
 }
+
