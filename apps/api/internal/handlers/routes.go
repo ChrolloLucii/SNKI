@@ -193,6 +193,8 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sportFilter := r.URL.Query().Get("sport")
 		districtFilter := r.URL.Query().Get("district")
+		dateFromFilter := r.URL.Query().Get("date_from")
+		dateToFilter := r.URL.Query().Get("date_to")
 
 		query := `
 			SELECT 
@@ -202,26 +204,44 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 				COALESCE(COUNT(p.id), 0) as participants
 			FROM slots s
 			LEFT JOIN participants p ON s.id = p.slot_id AND p.status IN ('RESERVED', 'PAID')
-			WHERE s.status = 'OPEN' 
+			WHERE s.status = 'OPEN'
 		`
-		
+
 		args := []interface{}{}
 		argCount := 1
-		
+
 		if sportFilter != "" {
 			query += fmt.Sprintf(" AND s.sport = $%d", argCount)
 			args = append(args, sportFilter)
 			argCount++
 		}
-		
+
 		if districtFilter != "" {
 			query += fmt.Sprintf(" AND s.district ILIKE $%d", argCount)
 			args = append(args, "%"+districtFilter+"%")
 			argCount++
 		}
+		
+		if dateFromFilter != "" {
+			if parsedDateFrom, err := time.Parse(time.RFC3339, dateFromFilter); err == nil {
+				query += fmt.Sprintf(" AND s.starts_at >= $%d", argCount)
+				args = append(args, parsedDateFrom)
+				argCount++
+			} else {
+				WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format", "VALIDATION_ERROR", "Invalid date_from format. Use ISO8601.")
+				return
+			}
+		}
 
-		query += ` GROUP BY s.id ORDER BY s.starts_at ASC LIMIT 100`
-
+		if dateToFilter != "" {
+			if parsedDateTo, err := time.Parse(time.RFC3339, dateToFilter); err == nil {
+				query += fmt.Sprintf(" AND s.starts_at <= $%d", argCount)
+				args = append(args, parsedDateTo)
+				argCount++
+			} else {
+				WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format", "VALIDATION_ERROR", "Invalid date_to format. Use ISO8601.")
+				return
+			}
 		rows, err := pool.Query(r.Context(), query, args...)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
