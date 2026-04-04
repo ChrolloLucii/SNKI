@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param([string]$ApiUrl = "http://localhost:8080")
 
 $slotId = "55555555-5555-5555-5555-555555555555"
@@ -12,7 +12,7 @@ Write-Host "
 # 1. Join slot first (if not already joined)
 Write-Host "1. Ensure user is in slot..." -ForegroundColor Yellow
 $joinBody = "{`"user_id`":`"$userId`"}"
-Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -ContentType "application/json" -Body $joinBody -UseBasicParsing -ErrorAction SilentlyContinue | Out-Null
+Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -ContentType "application/json" -Headers @{"X-Demo-Token"=$userId} -Body $joinBody -UseBasicParsing -ErrorAction SilentlyContinue | Out-Null
 Write-Host "   User joined (or was already joined)." -ForegroundColor Green
 
 # 2. First Payment Attempt (Should Succeed)

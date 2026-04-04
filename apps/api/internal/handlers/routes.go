@@ -13,18 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type ErrorResp struct {
-	Error   string `json:"error"`
-	Code    string `json:"code"`
-	Message string `json:"message,omitempty"`
-}
-
-type SuccessResp struct {
-	Success bool        `json:"success"`
-	Data    interface{} `json:"data,omitempty"`
-	Message string      `json:"message,omitempty"`
-}
-
 type JoinRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 }

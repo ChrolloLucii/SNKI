@@ -27,7 +27,7 @@ foreach ($uid in $users) {
     $body = "{`"user_id`":`"$uid`"}"
     
     try {
-        $r = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -ContentType "application/json" -Body $body -UseBasicParsing -ErrorAction Stop
+        $r = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -ContentType "application/json" -Headers @{"X-Demo-Token"=$uid} -Body $body -UseBasicParsing -ErrorAction Stop
         $data = $r.Content | ConvertFrom-Json
         Write-Host "[OK] $uid - $($data.message)"
         $success++
