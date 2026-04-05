@@ -42,9 +42,8 @@ export function SlotDetailsPage() {
       setParticipationStatus('RESERVED');
       // Опционально: можно перезапросить данные слота `api.getSlot(id)`, чтобы обновился счетчик участников
     } catch (err: any) {
-      // Игнорируем ошибку ALREADY_JOINED для удобства демо, делаем вид, что всё ок
-      if (err.code === 'ALREADY_JOINED') {
-        setParticipationStatus('RESERVED');
+      if (err.code === 'DUPLICATE_PARTICIPATION') {
+        setActionError('Вы уже забронированы на это место');
       } else {
         setActionError(err.message || 'Произошла ошибка при бронировании');
       }

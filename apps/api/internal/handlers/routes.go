@@ -1,4 +1,4 @@
-﻿package handlers
+package handlers
 
 import (
 	"encoding/json"
@@ -85,10 +85,9 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		if count > 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "already_joined", Code: "DUPLICATE_PARTICIPATION"})
-			return
-		}
-
+                        json.NewEncoder(w).Encode(ErrorResp{Error: "already_joined", Code: "DUPLICATE_PARTICIPATION", Message: "Вы уже забронированы на это место"})
+                        return
+                }
 		// Count current
 		count = 0
 		pool.QueryRow(ctx, `
@@ -122,7 +121,7 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 
 		tx.Commit(ctx)
 
-		log.Printf("✓ User %s joined slot (now %d/%d)", userUUID, count+1, capacity)
+		log.Printf("? User %s joined slot (now %d/%d)", userUUID, count+1, capacity)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -242,6 +241,10 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 				WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format", "VALIDATION_ERROR", "Invalid date_to format. Use ISO8601.")
 				return
 			}
+		}
+
+		query += " GROUP BY s.id"
+
 		rows, err := pool.Query(r.Context(), query, args...)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
