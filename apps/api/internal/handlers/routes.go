@@ -1,4 +1,4 @@
-﻿package handlers
+package handlers
 
 import (
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 )
 
 type JoinRequest struct {
-	UserID uuid.UUID `json:"user_id"`
+	UserID string `json:"user_id"`
 }
 
 // Join handles POST /slots/{id}/join
@@ -26,8 +26,8 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		slotID, _ := uuid.Parse(slotIDStr)
 
 		userIDStr := GetUserID(ctx)
-		req := JoinRequest{UserID: uuid.MustParse(userIDStr)}
-		if req.UserID == uuid.Nil {
+		req := JoinRequest{UserID: userIDStr}
+		if req.UserID == "" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(ErrorResp{Error: "missing_user_id", Code: "INVALID_INPUT"})
@@ -43,6 +43,10 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			return
 		}
 		defer lock.Release(ctx)
+
+		// In our DB `users` table, ID is a UUID. If they provide demo_user, we need to hash it 
+		// into a valid UUID or generate a deterministic one. Let's use name-based uuid.
+		userUUID := uuid.NewMD5(uuid.NameSpaceDNS, []byte(req.UserID))
 
 		//  проверяем, что слот существует, открыт для регистрации и не заполнен, чтобы избежать гонок и обеспечить целостность данных (чтобы всегда был актуальный статус слота при попытке записаться)
 		var status string
@@ -76,15 +80,14 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		var count int
 		pool.QueryRow(ctx, `
 			SELECT COUNT(*) FROM participants WHERE slot_id = $1 AND user_id = $2
-		`, slotID, req.UserID).Scan(&count)
+		`, slotID, userUUID).Scan(&count)
 
 		if count > 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(ErrorResp{Error: "already_joined", Code: "DUPLICATE_PARTICIPATION"})
-			return
-		}
-
+                        json.NewEncoder(w).Encode(ErrorResp{Error: "already_joined", Code: "DUPLICATE_PARTICIPATION", Message: "Вы уже забронированы на это место"})
+                        return
+                }
 		// Count current
 		count = 0
 		pool.QueryRow(ctx, `
@@ -108,17 +111,17 @@ func Join(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 			INSERT INTO users (id, token) 
 			VALUES ($1, $2) 
 			ON CONFLICT (id) DO NOTHING
-		`, req.UserID, fmt.Sprintf("demo_%s", req.UserID))
+		`, userUUID, req.UserID)
 
 		// Add participant
 		tx.Exec(ctx, `
 			INSERT INTO participants (slot_id, user_id, status)
 			VALUES ($1, $2, 'RESERVED')
-		`, slotID, req.UserID)
+		`, slotID, userUUID)
 
 		tx.Commit(ctx)
 
-		log.Printf("вњ“ User %s joined slot (now %d/%d)", req.UserID, count+1, capacity)
+		log.Printf("? User %s joined slot (now %d/%d)", userUUID, count+1, capacity)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -132,21 +135,25 @@ func GetSlotInf(pool *pgxpool.Pool) http.HandlerFunc {
 		slotIDStr := chi.URLParam(r, "slotId")
 		slotID, _ := uuid.Parse(slotIDStr)
 
-		var id, sport string
-		var capacity int32
+		var id, sport, district, venueName, address, status string
+		var capacity, durationMinutes, expectedPrice, maxPrice int
 		var participants int
+		var startsAt, deadlineAt time.Time
+		var rulesText *string
 		
 		err := pool.QueryRow(r.Context(), `
 			SELECT 
-				s.id, 
-				s.sport, 
-				s.capacity,
+				s.id, s.sport, s.district, s.venue_name, s.address,
+				s.starts_at, s.deadline_at, s.duration_minutes,
+				s.capacity, s.expected_price, s.max_price, s.rules_text, s.status,
 				COALESCE(COUNT(p.id), 0) as participants
 			FROM slots s
 			LEFT JOIN participants p ON s.id = p.slot_id AND p.status IN ('RESERVED', 'PAID')
 			WHERE s.id = $1
-			GROUP BY s.id, s.sport, s.capacity
-		`, slotID).Scan(&id, &sport, &capacity, &participants)
+			GROUP BY s.id
+		`, slotID).Scan(&id, &sport, &district, &venueName, &address,
+			&startsAt, &deadlineAt, &durationMinutes,
+			&capacity, &expectedPrice, &maxPrice, &rulesText, &status, &participants)
 
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -162,8 +169,19 @@ func GetSlotInf(pool *pgxpool.Pool) http.HandlerFunc {
 			Data: map[string]interface{}{
 				"id": id, 
 				"sport": sport,
+				"district": district,
+				"venue_name": venueName,
+				"address": address,
+				"starts_at": startsAt.Format(time.RFC3339),
+				"deadline_at": deadlineAt.Format(time.RFC3339),
+				"duration_minutes": durationMinutes,
 				"capacity": capacity,
+				"expected_price": expectedPrice,
+				"max_price": maxPrice,
+				"rules_text": rulesText,
+				"status": status,
 				"participants": participants,
+				"free_spots": capacity - participants,
 			},
 		})
 	}
@@ -172,9 +190,62 @@ func GetSlotInf(pool *pgxpool.Pool) http.HandlerFunc {
 // ListAll handles GET /slots
 func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := pool.Query(r.Context(), `
-			SELECT id, sport FROM slots WHERE status = 'OPEN' LIMIT 100
-		`)
+		sportFilter := r.URL.Query().Get("sport")
+		districtFilter := r.URL.Query().Get("district")
+		dateFromFilter := r.URL.Query().Get("date_from")
+		dateToFilter := r.URL.Query().Get("date_to")
+
+		query := `
+			SELECT 
+				s.id, s.sport, s.district, s.venue_name, s.address,
+				s.starts_at, s.deadline_at, s.duration_minutes,
+				s.capacity, s.expected_price, s.max_price, s.rules_text, s.status,
+				COALESCE(COUNT(p.id), 0) as participants
+			FROM slots s
+			LEFT JOIN participants p ON s.id = p.slot_id AND p.status IN ('RESERVED', 'PAID')
+			WHERE s.status = 'OPEN'
+		`
+
+		args := []interface{}{}
+		argCount := 1
+
+		if sportFilter != "" {
+			query += fmt.Sprintf(" AND s.sport = $%d", argCount)
+			args = append(args, sportFilter)
+			argCount++
+		}
+
+		if districtFilter != "" {
+			query += fmt.Sprintf(" AND s.district ILIKE $%d", argCount)
+			args = append(args, "%"+districtFilter+"%")
+			argCount++
+		}
+		
+		if dateFromFilter != "" {
+			if parsedDateFrom, err := time.Parse(time.RFC3339, dateFromFilter); err == nil {
+				query += fmt.Sprintf(" AND s.starts_at >= $%d", argCount)
+				args = append(args, parsedDateFrom)
+				argCount++
+			} else {
+				WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format", "VALIDATION_ERROR", "Invalid date_from format. Use ISO8601.")
+				return
+			}
+		}
+
+		if dateToFilter != "" {
+			if parsedDateTo, err := time.Parse(time.RFC3339, dateToFilter); err == nil {
+				query += fmt.Sprintf(" AND s.starts_at <= $%d", argCount)
+				args = append(args, parsedDateTo)
+				argCount++
+			} else {
+				WriteError(w, http.StatusUnprocessableEntity, "invalid_date_format", "VALIDATION_ERROR", "Invalid date_to format. Use ISO8601.")
+				return
+			}
+		}
+
+		query += " GROUP BY s.id"
+
+		rows, err := pool.Query(r.Context(), query, args...)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -183,12 +254,40 @@ func ListAll(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		var slots []interface{}
+		var slots []map[string]interface{}
 		for rows.Next() {
-			var id, sport string
-			if err := rows.Scan(&id, &sport); err == nil {
-				slots = append(slots, map[string]string{"id": id, "sport": sport})
+			var id, sport, district, venueName, address, status string
+			var capacity, durationMinutes, expectedPrice, maxPrice int
+			var participants int
+			var startsAt, deadlineAt time.Time
+			var rulesText *string
+			
+			if err := rows.Scan(&id, &sport, &district, &venueName, &address,
+				&startsAt, &deadlineAt, &durationMinutes,
+				&capacity, &expectedPrice, &maxPrice, &rulesText, &status, &participants); err == nil {
+				
+				slots = append(slots, map[string]interface{}{
+					"id": id, 
+					"sport": sport,
+					"district": district,
+					"venue_name": venueName,
+					"address": address,
+					"starts_at": startsAt.Format(time.RFC3339),
+					"deadline_at": deadlineAt.Format(time.RFC3339),
+					"duration_minutes": durationMinutes,
+					"capacity": capacity,
+					"expected_price": expectedPrice,
+					"max_price": maxPrice,
+					"rules_text": rulesText,
+					"status": status,
+					"participants": participants,
+					"free_spots": capacity - participants,
+				})
 			}
+		}
+		
+		if slots == nil {
+			slots = []map[string]interface{}{}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -219,10 +318,13 @@ func Pay(pool *pgxpool.Pool, locker locking.Locker) http.HandlerFunc {
 		}
 
 		userIDStr := GetUserID(ctx)
+		userUUID := uuid.NewMD5(uuid.NameSpaceDNS, []byte(userIDStr))
+		
 		req := PayRequest{}
 		json.NewDecoder(r.Body).Decode(&req)
-		req.UserID = uuid.MustParse(userIDStr)
-
+		// Map token string to UUID.
+		req.UserID = userUUID
+		
 		if req.UserID == uuid.Nil || req.Amount <= 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)

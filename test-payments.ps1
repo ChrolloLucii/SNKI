@@ -12,7 +12,7 @@ Write-Host "
 # 1. Join slot first (if not already joined)
 Write-Host "1. Ensure user is in slot..." -ForegroundColor Yellow
 $joinBody = "{`"user_id`":`"$userId`"}"
-Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -ContentType "application/json" -Headers @{"X-Demo-Token"=$userId} -Body $joinBody -UseBasicParsing -ErrorAction SilentlyContinue | Out-Null
+Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/join" -Method POST -Headers @{ "X-Demo-Token" = $userId } -ContentType "application/json" -Body "{}" -UseBasicParsing -ErrorAction SilentlyContinue | Out-Null
 Write-Host "   User joined (or was already joined)." -ForegroundColor Green
 
 # 2. First Payment Attempt (Should Succeed)
@@ -28,7 +28,7 @@ $failCount = 0
 $duplicateCount = 0
 
 try {
-    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $idempotencyKey } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $idempotencyKey; "X-Demo-Token" = $userId } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
     $data = $response.Content | ConvertFrom-Json
     Write-Host "   [OK] Initial payment: $($data.message)" -ForegroundColor Green
     $successCount++
@@ -42,7 +42,7 @@ try {
 Write-Host "
 3. Second Payment Attempt with SAME Idempotency Key (Should return idempotency hit)..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $idempotencyKey } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $idempotencyKey; "X-Demo-Token" = $userId } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
     $data = $response.Content | ConvertFrom-Json
     if ($data.message -match "idempotent") {
         Write-Host "   [OK] Idempotency worked: $($data.message)" -ForegroundColor Green
@@ -59,16 +59,18 @@ Write-Host "
 4. Third Payment Attempt with NEW Idempotency Key (Should Fail - already paid)..." -ForegroundColor Yellow
 $newKey = [guid]::NewGuid().ToString()
 try {
-    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $newKey } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "$ApiUrl/slots/$slotId/pay" -Method POST -Headers @{ "X-Idempotency-Key" = $newKey; "X-Demo-Token" = $userId } -ContentType "application/json" -Body $payBody -UseBasicParsing -ErrorAction Stop
     Write-Host "   [FAIL] Allowed double payment!" -ForegroundColor Red
 } catch {
     $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
-    $errorData = $reader.ReadToEnd() | ConvertFrom-Json
+    $bodyRaw = $reader.ReadToEnd()
+    $errorData = $bodyRaw | ConvertFrom-Json
     if ($errorData.code -eq "ALREADY_PAID") {
         Write-Host "   [OK] Correctly blocked double payment: $($errorData.error)" -ForegroundColor Green
         $duplicateCount++
     } else {
         Write-Host "   [FAIL] Failed with wrong error: $($errorData.error) - $($errorData.code)" -ForegroundColor Red
+        Write-Host "DEBUG BODY: $bodyRaw" 
     }
 }
 

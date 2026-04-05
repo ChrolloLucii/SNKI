@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,9 +34,12 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Temporary authentication via headers directly, before middleware is used everywhere
 		userID := GetUserID(r.Context())
+		
+		// Map the auth token to our internal UUID generated hash
+		userUUID := uuid.NewMD5(uuid.NameSpaceDNS, []byte(userID))
 
 		query := `
-			SELECT 
+			SELECT
 				p.id, p.user_id, p.status, p.reserved_at, p.paid_at,
 				s.id as slot_id, s.sport, s.district, s.venue_name, s.address,
 				s.starts_at, s.deadline_at, s.duration_minutes, s.expected_price, s.max_price, s.status as slot_status
@@ -45,7 +49,7 @@ func GetMyParticipations(pool *pgxpool.Pool) http.HandlerFunc {
 			ORDER BY s.starts_at DESC
 		`
 
-		rows, err := pool.Query(r.Context(), query, userID)
+		rows, err := pool.Query(r.Context(), query, userUUID)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			WriteError(w, http.StatusInternalServerError, "db_error", "INTERNAL_ERROR", err.Error())
